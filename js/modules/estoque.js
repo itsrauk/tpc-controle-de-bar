@@ -93,6 +93,11 @@ function renderProdutoRow(p, ativo) {
         <button class="qty-btn-sm" data-stock-inc data-id="${p.id}">+</button>
       </div>
 
+      <!-- Destaque -->
+      <button class="star-btn${p.featured ? ' star-btn--active' : ''}"
+              data-feat-id="${p.id}"
+              title="${p.featured ? 'Remover destaque' : 'Marcar como destaque'}">⭐</button>
+
       <!-- Toggle disponível -->
       <label class="avail-toggle" title="${ativo ? 'Clique para tornar indisponível' : 'Clique para reativar'}">
         <input type="checkbox" class="avail-chk" data-toggle-id="${p.id}" ${ativo ? 'checked' : ''}>
@@ -120,10 +125,12 @@ function bindEstoque() {
 
   // Ajuste de estoque
   el?.addEventListener('click', async e => {
-    const inc = e.target.closest('[data-stock-inc]');
-    const dec = e.target.closest('[data-stock-dec]');
-    if (inc) await adjustStock(inc.dataset.id, 1);
-    else if (dec) await adjustStock(dec.dataset.id, -1);
+    const inc  = e.target.closest('[data-stock-inc]');
+    const dec  = e.target.closest('[data-stock-dec]');
+    const star = e.target.closest('.star-btn');
+    if (inc)       await adjustStock(inc.dataset.id, 1);
+    else if (dec)  await adjustStock(dec.dataset.id, -1);
+    else if (star) await toggleFeatured(star.dataset.featId, !star.classList.contains('star-btn--active'));
   });
 
   // Toggle de disponibilidade
@@ -195,6 +202,18 @@ async function toggleAvailability(productId, makeActive) {
 
   const label = makeActive ? 'disponível' : 'indisponível';
   showToast(`"${product.name}" marcado como ${label}`, makeActive ? 'success' : 'info');
+  renderEstoque();
+}
+
+async function toggleFeatured(productId, makeFeatured) {
+  const products = getState('products');
+  const product  = products.find(p => p.id === productId);
+  if (!product) return;
+
+  const updated = { ...product, featured: makeFeatured, updated_at: new Date().toISOString() };
+  setState('products', products.map(p => p.id === productId ? updated : p));
+  await saveProduct(updated);
+  showToast(`"${product.name}" ${makeFeatured ? 'em destaque ⭐' : 'sem destaque'}`, makeFeatured ? 'success' : 'info');
   renderEstoque();
 }
 

@@ -80,9 +80,9 @@ function renderProducts() {
   return filtered.map(p => {
     const esgotado = p.stock <= 0 && p.category !== 'vale';
     return `
-      <button class="product-card${esgotado ? ' product-card--esgotado' : ''}"
+      <button class="product-card product-card--${p.category}${p.featured ? ' product-card--featured' : ''}${esgotado ? ' product-card--esgotado' : ''}"
               data-id="${p.id}" ${esgotado ? 'disabled' : ''}>
-        <span class="product-name">${highlight(p.name, search)}</span>
+        <span class="product-name">${p.featured ? '<span class="featured-star">★</span> ' : ''}${highlight(p.name, search)}</span>
         <span class="product-price">${p.price === 0 ? 'Grátis' : fmt(p.price)}</span>
         ${esgotado ? '<span class="esgotado-badge">Esgotado</span>' : ''}
         ${p.stock < 5 && p.stock > 0 && p.category !== 'vale' ? `<span class="low-stock">Últ. ${p.stock}</span>` : ''}
