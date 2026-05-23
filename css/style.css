@@ -294,7 +294,7 @@ a { color: var(--blue); }
 .reserva-actions { display: flex; gap: .5rem; }
 .reserva-actions .btn { flex: 1; }
 
-/* ── Estoque Module ──────────────────────────────────────────── */
+/* ── Produtos / Estoque Module ───────────────────────────────── */
 .estoque-categoria { display: flex; flex-direction: column; gap: 0; }
 .cat-title {
   font-size: .8rem; font-weight: 700; text-transform: uppercase;
@@ -302,24 +302,70 @@ a { color: var(--blue); }
   padding: .75rem 0 .4rem;
 }
 .produto-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .6rem 0; border-bottom: 1px solid var(--border); gap: .5rem;
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  padding: .55rem 0; border-bottom: 1px solid var(--border); gap: .6rem;
 }
 .produto-row:last-child { border-bottom: none; }
-.produto-info { flex: 1; min-width: 0; }
-.produto-nome { display: block; font-size: .9rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.produto-preco { font-size: .8rem; color: var(--text-muted); }
-.produto-estoque { display: flex; align-items: center; gap: .4rem; flex-shrink: 0; }
+.produto-row--inativo { opacity: .55; }
+
+.produto-info { min-width: 0; }
+.produto-nome { display: block; font-size: .88rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Preço editável inline */
+.produto-preco-wrap {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: .2rem .4rem;
+  transition: border-color .15s;
+}
+.produto-preco-wrap:focus-within { border-color: var(--blue); }
+.preco-prefix { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+.preco-inline {
+  width: 60px; background: none; border: none; padding: 0;
+  font-size: .88rem; font-weight: 700; color: var(--blue);
+  text-align: right; outline: none;
+}
+/* Remove spinners do input number */
+.preco-inline::-webkit-inner-spin-button,
+.preco-inline::-webkit-outer-spin-button { -webkit-appearance: none; }
+.preco-inline { -moz-appearance: textfield; }
+
+.produto-estoque { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; }
 .qty-btn-sm {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 24px; height: 24px; border-radius: 50%;
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); font-size: .9rem; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .12s;
 }
-.stock-count { font-size: .9rem; font-weight: 700; min-width: 30px; text-align: center; }
+.qty-btn-sm:active { transform: scale(.88); }
+.stock-count { font-size: .88rem; font-weight: 700; min-width: 26px; text-align: center; }
 .stock--ok   { color: var(--green); }
 .stock--low  { color: var(--yellow); }
 .stock--zero { color: var(--red); }
+
+/* Toggle de disponibilidade (switch) */
+.avail-toggle {
+  position: relative; display: inline-block;
+  width: 38px; height: 22px; flex-shrink: 0; cursor: pointer;
+}
+.avail-toggle input { opacity: 0; width: 0; height: 0; }
+.avail-slider {
+  position: absolute; inset: 0; border-radius: 99px;
+  background: var(--surface2); border: 1px solid var(--border);
+  transition: .2s;
+}
+.avail-slider::before {
+  content: ''; position: absolute;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-muted);
+  left: 2px; top: 50%; transform: translateY(-50%);
+  transition: .2s;
+}
+.avail-toggle input:checked + .avail-slider { background: rgba(63,185,80,.2); border-color: var(--green); }
+.avail-toggle input:checked + .avail-slider::before { background: var(--green); left: 18px; }
 
 /* ── Histórico Module ────────────────────────────────────────── */
 .sale-card {

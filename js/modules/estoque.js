@@ -3,86 +3,202 @@ import { saveProduct } from '../db.js';
 import { fmt, uuid, showToast, sanitize } from '../utils.js';
 import { CATEGORIAS } from '../config.js';
 
+// ── Render principal ─────────────────────────────────────────────
 export function renderEstoque() {
   const el = document.getElementById('panel-estoque');
   if (!el) return;
 
-  const products = getState('products');
-  const cats = CATEGORIAS.filter(c => c.id !== 'all');
+  const products  = getState('products');
+  const showAll   = getState('prodShowAll') || false;
+  const cats      = CATEGORIAS.filter(c => c.id !== 'all');
+  const search    = (getState('prodSearch') || '').toLowerCase();
+
+  const filtered  = products.filter(p =>
+    !search || p.name.toLowerCase().includes(search)
+  );
+  const ativos    = filtered.filter(p => p.active);
+  const inativos  = filtered.filter(p => !p.active);
 
   el.innerHTML = `
     <div class="panel-header">
-      <h2>Estoque</h2>
-      <button class="btn btn--primary btn--sm" id="btn-add-produto">+ Produto</button>
+      <h2>Produtos</h2>
+      <button class="btn btn--primary btn--sm" id="btn-add-produto">+ Novo</button>
     </div>
+
+    <div class="search-bar" style="padding:.25rem 0 .5rem">
+      <input type="search" id="prod-search" placeholder="Buscar produto..."
+             value="${sanitize(getState('prodSearch') || '')}">
+    </div>
+
+    ${ativos.length === 0 && inativos.length === 0
+      ? '<div class="empty-state">Nenhum produto encontrado.<br>Rode o schema.sql no Supabase primeiro.</div>'
+      : ''}
+
     ${cats.map(cat => {
-      const items = products.filter(p => p.category === cat.id);
+      const items = ativos.filter(p => p.category === cat.id);
       if (!items.length) return '';
       return `
         <div class="estoque-categoria">
-          <h3 class="cat-title">${cat.label}</h3>
-          ${items.map(p => renderProdutoRow(p)).join('')}
+          <h3 class="cat-title">${cat.label}
+            <span class="muted" style="font-weight:400;font-size:.75rem"> — ${items.length} itens</span>
+          </h3>
+          ${items.map(p => renderProdutoRow(p, true)).join('')}
         </div>`;
-    }).join('')}`;
+    }).join('')}
+
+    ${inativos.length ? `
+      <div class="estoque-categoria">
+        <button class="cat-title btn-toggle-inativos" id="btn-toggle-inativos"
+                style="background:none;border:none;cursor:pointer;color:var(--text-muted);width:100%;text-align:left;padding:.75rem 0 .4rem">
+          ${showAll ? '▾' : '▸'} Indisponíveis (${inativos.length})
+        </button>
+        ${showAll ? inativos.map(p => renderProdutoRow(p, false)).join('') : ''}
+      </div>` : ''}
+  `;
 
   bindEstoque();
 }
 
-function renderProdutoRow(p) {
-  const stockClass = p.stock === 0 ? 'stock--zero'
-    : p.stock < 5 ? 'stock--low'
-    : 'stock--ok';
+// ── Row de cada produto ──────────────────────────────────────────
+function renderProdutoRow(p, ativo) {
+  const stockClass = p.stock === 0 ? 'stock--zero' : p.stock < 5 ? 'stock--low' : 'stock--ok';
+
   return `
-    <div class="produto-row" data-id="${p.id}">
+    <div class="produto-row${ativo ? '' : ' produto-row--inativo'}" data-id="${p.id}">
+
+      <!-- Nome + badge inativo -->
       <div class="produto-info">
         <span class="produto-nome">${sanitize(p.name)}</span>
-        <span class="produto-preco">${p.price === 0 ? 'Grátis' : fmt(p.price)}</span>
+        ${!ativo ? '<span class="badge badge--danger" style="font-size:.65rem">Indisponível</span>' : ''}
       </div>
+
+      <!-- Preço editável inline -->
+      <div class="produto-preco-wrap" title="Clique para editar o preço">
+        <span class="preco-prefix">R$</span>
+        <input  class="preco-inline"
+                type="number" min="0" step="0.01"
+                value="${p.price.toFixed(2)}"
+                data-price-id="${p.id}"
+                data-original="${p.price}">
+      </div>
+
+      <!-- Estoque -->
       <div class="produto-estoque">
         <button class="qty-btn-sm" data-stock-dec data-id="${p.id}">−</button>
         <span class="stock-count ${stockClass}">${p.stock}</span>
         <button class="qty-btn-sm" data-stock-inc data-id="${p.id}">+</button>
-        <button class="btn-icon" data-edit-id="${p.id}" title="Editar">✏️</button>
       </div>
+
+      <!-- Toggle disponível -->
+      <label class="avail-toggle" title="${ativo ? 'Clique para tornar indisponível' : 'Clique para reativar'}">
+        <input type="checkbox" class="avail-chk" data-toggle-id="${p.id}" ${ativo ? 'checked' : ''}>
+        <span class="avail-slider"></span>
+      </label>
+
     </div>`;
 }
 
+// ── Bind de eventos ──────────────────────────────────────────────
 function bindEstoque() {
   const el = document.getElementById('panel-estoque');
 
-  el?.addEventListener('click', async e => {
-    const incBtn = e.target.closest('[data-stock-inc]');
-    const decBtn = e.target.closest('[data-stock-dec]');
-    const editBtn = e.target.closest('[data-edit-id]');
-
-    if (incBtn) await adjustStock(incBtn.dataset.id, 1);
-    else if (decBtn) await adjustStock(decBtn.dataset.id, -1);
-    else if (editBtn) openEditModal(editBtn.dataset.editId);
+  // Busca em tempo real
+  document.getElementById('prod-search')?.addEventListener('input', e => {
+    setState('prodSearch', e.target.value);
+    renderEstoque();
   });
 
+  // Toggle seção inativos
+  document.getElementById('btn-toggle-inativos')?.addEventListener('click', () => {
+    setState('prodShowAll', !getState('prodShowAll'));
+    renderEstoque();
+  });
+
+  // Ajuste de estoque
+  el?.addEventListener('click', async e => {
+    const inc = e.target.closest('[data-stock-inc]');
+    const dec = e.target.closest('[data-stock-dec]');
+    if (inc) await adjustStock(inc.dataset.id, 1);
+    else if (dec) await adjustStock(dec.dataset.id, -1);
+  });
+
+  // Toggle de disponibilidade
+  el?.addEventListener('change', async e => {
+    const chk = e.target.closest('.avail-chk');
+    if (chk) await toggleAvailability(chk.dataset.toggleId, chk.checked);
+  });
+
+  // Edição de preço inline — salva ao sair do campo (blur) ou Enter
+  el?.addEventListener('blur', async e => {
+    const inp = e.target.closest('.preco-inline');
+    if (inp) await savePrice(inp);
+  }, true);
+
+  el?.addEventListener('keydown', async e => {
+    if (e.key !== 'Enter') return;
+    const inp = e.target.closest('.preco-inline');
+    if (inp) { inp.blur(); }
+  });
+
+  // Botão novo produto
   document.getElementById('btn-add-produto')?.addEventListener('click', () => openAddModal());
 }
 
+// ── Ações de dados ───────────────────────────────────────────────
 async function adjustStock(productId, delta) {
-  let products = getState('products');
-  const idx = products.findIndex(p => p.id === productId);
-  if (idx === -1) return;
+  const products = getState('products');
+  const product  = products.find(p => p.id === productId);
+  if (!product) return;
 
-  const newStock = Math.max(0, products[idx].stock + delta);
-  products = products.map(p => p.id === productId ? { ...p, stock: newStock } : p);
-  setState('products', products);
-
-  await saveProduct({ ...products.find(p => p.id === productId), updated_at: new Date().toISOString() });
+  const newStock  = Math.max(0, product.stock + delta);
+  const updated   = { ...product, stock: newStock, updated_at: new Date().toISOString() };
+  setState('products', products.map(p => p.id === productId ? updated : p));
+  await saveProduct(updated);
   renderEstoque();
 }
 
+async function savePrice(inp) {
+  const productId = inp.dataset.priceId;
+  const original  = parseFloat(inp.dataset.original);
+  const newPrice  = Math.max(0, parseFloat(inp.value) || 0);
+
+  if (Math.abs(newPrice - original) < 0.001) return; // sem mudança
+
+  const products  = getState('products');
+  const product   = products.find(p => p.id === productId);
+  if (!product) return;
+
+  const updated   = { ...product, price: newPrice, updated_at: new Date().toISOString() };
+  setState('products', products.map(p => p.id === productId ? updated : p));
+  await saveProduct(updated);
+  showToast(`Preço de "${product.name}" atualizado para ${fmt(newPrice)}`, 'success');
+  // Atualiza o data-original sem re-render total
+  inp.dataset.original = newPrice.toFixed(2);
+}
+
+async function toggleAvailability(productId, makeActive) {
+  const products  = getState('products');
+  const product   = products.find(p => p.id === productId);
+  if (!product) return;
+
+  const updated   = { ...product, active: makeActive, updated_at: new Date().toISOString() };
+  // Se reativando, mantém no estado global; se desativando, move para inativos (estado local)
+  setState('products', products.map(p => p.id === productId ? updated : p));
+  await saveProduct(updated);
+
+  const label = makeActive ? 'disponível' : 'indisponível';
+  showToast(`"${product.name}" marcado como ${label}`, makeActive ? 'success' : 'info');
+  renderEstoque();
+}
+
+// ── Modal: novo produto ──────────────────────────────────────────
 function openAddModal() {
   const cats = CATEGORIAS.filter(c => c.id !== 'all');
   showModal(`
     <h2>Novo Produto</h2>
     <div class="form-group">
       <label>Nome</label>
-      <input type="text" id="np-nome" placeholder="Nome do produto">
+      <input type="text" id="np-nome" placeholder="Nome do produto" autofocus>
     </div>
     <div class="form-group">
       <label>Preço (R$)</label>
@@ -100,14 +216,14 @@ function openAddModal() {
     </div>
     <div class="modal-actions">
       <button class="btn btn--ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn--primary" id="btn-salvar-produto">Salvar</button>
+      <button class="btn btn--primary" id="btn-salvar-produto">Salvar Produto</button>
     </div>
   `);
 
   document.getElementById('btn-salvar-produto')?.addEventListener('click', async () => {
-    const nome = document.getElementById('np-nome')?.value?.trim();
+    const nome  = document.getElementById('np-nome')?.value?.trim();
     const preco = parseFloat(document.getElementById('np-preco')?.value) || 0;
-    const cat = document.getElementById('np-cat')?.value;
+    const cat   = document.getElementById('np-cat')?.value;
     const stock = parseInt(document.getElementById('np-stock')?.value) || 0;
 
     if (!nome) return showToast('Informe o nome do produto', 'error');
@@ -120,74 +236,9 @@ function openAddModal() {
     };
 
     await saveProduct(product);
-    const products = [...getState('products'), product];
-    setState('products', products);
-
+    setState('products', [...getState('products'), product]);
     closeModal();
-    showToast(`${nome} adicionado!`, 'success');
-    renderEstoque();
-  });
-}
-
-function openEditModal(productId) {
-  const product = getState('products').find(p => p.id === productId);
-  if (!product) return;
-
-  const cats = CATEGORIAS.filter(c => c.id !== 'all');
-  showModal(`
-    <h2>Editar Produto</h2>
-    <div class="form-group">
-      <label>Nome</label>
-      <input type="text" id="ep-nome" value="${sanitize(product.name)}">
-    </div>
-    <div class="form-group">
-      <label>Preço (R$)</label>
-      <input type="number" id="ep-preco" min="0" step="0.01" value="${product.price}" class="input-money">
-    </div>
-    <div class="form-group">
-      <label>Categoria</label>
-      <select id="ep-cat">
-        ${cats.map(c => `<option value="${c.id}" ${c.id === product.category ? 'selected' : ''}>${c.label}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Estoque</label>
-      <input type="number" id="ep-stock" min="0" step="1" value="${product.stock}">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn--ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn--danger btn--sm" id="btn-desativar">Desativar</button>
-      <button class="btn btn--primary" id="btn-salvar-edit">Salvar</button>
-    </div>
-  `);
-
-  document.getElementById('btn-salvar-edit')?.addEventListener('click', async () => {
-    const updated = {
-      ...product,
-      name: document.getElementById('ep-nome')?.value?.trim() || product.name,
-      price: parseFloat(document.getElementById('ep-preco')?.value) ?? product.price,
-      category: document.getElementById('ep-cat')?.value,
-      stock: parseInt(document.getElementById('ep-stock')?.value) ?? product.stock,
-      updated_at: new Date().toISOString()
-    };
-
-    await saveProduct(updated);
-    const products = getState('products').map(p => p.id === productId ? updated : p);
-    setState('products', products);
-
-    closeModal();
-    showToast('Produto atualizado!', 'success');
-    renderEstoque();
-  });
-
-  document.getElementById('btn-desativar')?.addEventListener('click', async () => {
-    if (!confirm(`Desativar "${product.name}"?`)) return;
-    const updated = { ...product, active: false, updated_at: new Date().toISOString() };
-    await saveProduct(updated);
-    const products = getState('products').filter(p => p.id !== productId);
-    setState('products', products);
-    closeModal();
-    showToast('Produto desativado', 'info');
+    showToast(`"${nome}" adicionado!`, 'success');
     renderEstoque();
   });
 }
