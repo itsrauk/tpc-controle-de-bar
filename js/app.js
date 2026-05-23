@@ -1,8 +1,8 @@
 import { getState, setState, subscribe } from './store.js';
 import { loadProducts, loadReservations, getSession, getSales, getSangrias,
-         flushQueue, openSession, loadCartLocal, clearCartLocal } from './db.js';
+         flushQueue, openSession, loadCartLocal, clearCartLocal, ls } from './db.js';
 import { isLateOpening, showToast } from './utils.js';
-import { FUNDO_MINIMO } from './config.js';
+import { FUNDO_MINIMO, LS_KEYS } from './config.js';
 import { requirePin } from './modules/pin.js';
 import { renderCaixa } from './modules/caixa.js';
 import { renderPDV } from './modules/pdv.js';
@@ -26,15 +26,9 @@ async function init() {
   window.addEventListener('offline', updateOnline);
   updateOnline();
 
-  showLoading(true);
-  try {
-    const [products, reservations] = await Promise.all([loadProducts(), loadReservations()]);
-    setState('products', products);
-    setState('reservations', reservations);
-  } catch {
-    showToast('Sem conexão — usando dados locais', 'info');
-  }
-  showLoading(false);
+  // ── 1. Cache local → UI instantânea (sem esperar rede) ──────────────
+  setState('products',     ls.get(LS_KEYS.PRODUCTS, []));
+  setState('reservations', ls.get(LS_KEYS.RESERVATIONS, []));
 
   // Restaura sessão e carrinho do localStorage
   const session = getSession();
@@ -42,7 +36,6 @@ async function init() {
     setState('session', session);
     setState('sales', getSales());
     setState('sangrias', getSangrias());
-    // Restaura carrinho salvo
     const { cart, meta } = loadCartLocal();
     if (cart?.length) {
       setState('cart', cart);
@@ -52,13 +45,26 @@ async function init() {
     }
   }
 
+  // ── 2. Mostra a UI imediatamente ─────────────────────────────────────
   setupNav();
   bindBlockerForm();
-
   subscribe('session', () => { updateBlocker(); updateSessionChip(); renderActive(); });
   updateBlocker();
   updateSessionChip();
-  navigateTo('pdv');
+  navigateTo('pdv');                         // ← visível antes de qualquer rede
+
+  // ── 3. Sincroniza com Supabase em background (não bloqueia) ──────────
+  const hadCache = getState('products').length > 0;
+  if (!hadCache) showLoading(true);          // spinner só se não há cache local
+  try {
+    const [products, reservations] = await Promise.all([loadProducts(), loadReservations()]);
+    setState('products', products);
+    setState('reservations', reservations);
+    renderActive();                          // atualiza view com dados frescos
+  } catch {
+    if (!hadCache) showToast('Sem conexão — sem produtos carregados', 'error');
+  }
+  showLoading(false);
 }
 
 function setupNav() {
