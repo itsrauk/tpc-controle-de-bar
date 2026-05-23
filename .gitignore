@@ -1,0 +1,13 @@
+﻿# IDE / Preview config
+.claude/
+
+# Arquivos legados da versao anterior
+script.js
+style.css
+
+# Arquivos de texto acidentais
+*.txt
+
+# OS
+.DS_Store
+Thumbs.db

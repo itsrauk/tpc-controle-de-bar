@@ -1,0 +1,14 @@
+{
+  "name": "TPC PDV - Controle de Bar",
+  "short_name": "TPC PDV",
+  "description": "Ponto de Venda e Gestão de Estoque da Cantina do Teatro",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#161b22",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
