@@ -39,9 +39,13 @@ async function init() {
     const { cart, meta } = loadCartLocal();
     if (cart?.length) {
       setState('cart', cart);
-      setState('isVale', meta.isVale || false);
+      setState('isVale',       meta.isVale       || false);
       setState('employeeName', meta.employeeName || '');
-      setState('isReserva', meta.isReserva || false);
+      setState('isReserva',    meta.isReserva    || false);
+      setState('isFiado',      meta.isFiado      || false);
+      setState('nomeAluno',    meta.nomeAluno    || '');
+      setState('nomePai',      meta.nomePai      || '');
+      setState('discount',     meta.discount     || 0);
     }
   }
 

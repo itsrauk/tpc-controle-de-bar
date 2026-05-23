@@ -1,6 +1,6 @@
 import { getState, setState } from '../store.js';
 import { getSales, getSangrias, voidSale } from '../db.js';
-import { fmt, fmtDate, fmtTime, calcExpectedCash, showToast } from '../utils.js';
+import { fmt, fmtDate, fmtTime, showToast, sanitize } from '../utils.js';
 import { LS_KEYS } from '../config.js';
 
 export function renderHistorico() {
@@ -19,8 +19,7 @@ export function renderHistorico() {
     <div class="panel-header">
       <h2>Histórico do Turno</h2>
       <div style="display:flex;gap:.4rem">
-        ${session ? `<button class="btn btn--ghost btn--sm" id="btn-imprimir" title="Imprimir">🖨️</button>` : ''}
-        ${session ? `<button class="btn btn--primary btn--sm" id="btn-exportar">📄 Exportar</button>` : ''}
+        ${session ? `<button class="btn btn--ghost btn--sm" id="btn-exportar" title="Gerar PDF">📄 PDF</button>` : ''}
       </div>
     </div>
 
@@ -44,11 +43,13 @@ export function renderHistorico() {
   bindHistorico(sales, sangrias, session);
 }
 
+// ── Turno atual ───────────────────────────────────────────────
 function renderTurnoAtual(session, sales, sangrias) {
-  const validSales = sales.filter(s => !s.is_voided);
-  const totalVendas = validSales.reduce((s, v) => s + v.total_amount, 0);
+  const validSales    = sales.filter(s => !s.is_voided);
+  const normalSales   = validSales.filter(s => !s.employee_name);
+  const totalVendas   = validSales.reduce((s, v) => s + v.total_amount, 0);
   const totalSangrias = sangrias.reduce((s, sg) => s + sg.amount, 0);
-  const vales = validSales.filter(s => s.employee_name);
+  const vales         = validSales.filter(s => s.employee_name);
 
   const byMethod = {};
   for (const sale of validSales) {
@@ -62,6 +63,8 @@ function renderTurnoAtual(session, sales, sangrias) {
   const lastValid = [...validSales].reverse()[0];
 
   return `
+    ${renderDashboard(validSales)}
+
     <div class="card">
       <h3>Resumo do Turno Atual</h3>
       <div class="balance-row"><span>Fundo Inicial</span><span>${fmt(session.opening_amount)}</span></div>
@@ -96,7 +99,7 @@ function renderTurnoAtual(session, sales, sangrias) {
         <div class="vale-item">
           <span>👤 ${v.employee_name}</span>
           <span class="muted">${fmtTime(v.created_at)}</span>
-          <span>${v.items?.map(i => `${i.product_name}×${i.quantity}`).join(', ') || ''}</span>
+          <span>${(v.items||[]).map(i => `${i.product_name}×${i.quantity}`).join(', ') || ''}</span>
         </div>`).join('')}
     </div>` : ''}
 
@@ -112,6 +115,77 @@ function renderTurnoAtual(session, sales, sangrias) {
     </div>` : ''}`;
 }
 
+// ── Dashboard ─────────────────────────────────────────────────
+function renderDashboard(validSales) {
+  if (!validSales.length) return '';
+
+  const products = getState('products');
+  const normalSales = validSales.filter(s => !s.employee_name);
+  const totalVendas = normalSales.reduce((s, v) => s + v.total_amount, 0);
+
+  // Revenue by category
+  const catRevenue = {};
+  for (const sale of normalSales) {
+    for (const item of (sale.items || [])) {
+      const prod = products.find(p => p.id === item.product_id || p.name === item.product_name);
+      const cat  = prod?.category || 'outros';
+      catRevenue[cat] = (catRevenue[cat] || 0) + (item.product_price * item.quantity);
+    }
+  }
+
+  // Top 5 produtos
+  const prodMap = {};
+  for (const sale of normalSales) {
+    for (const item of (sale.items || [])) {
+      if (!prodMap[item.product_name]) prodMap[item.product_name] = { name: item.product_name, qty: 0, revenue: 0 };
+      prodMap[item.product_name].qty     += item.quantity;
+      prodMap[item.product_name].revenue += item.product_price * item.quantity;
+    }
+  }
+  const top5 = Object.values(prodMap).sort((a, b) => b.qty - a.qty).slice(0, 5);
+
+  const maxRev = Math.max(...Object.values(catRevenue), 1);
+  const CAT_LABEL = { comida:'Comida', doce:'Doces', bebida:'Bebidas', tpc:'TPC', vale:'Vale', outros:'Outros' };
+
+  return `
+    <div class="card dashboard-card">
+      <h3>📊 Dashboard</h3>
+
+      <div class="dashboard-total">
+        <span class="dashboard-total-label">Total faturado (turno)</span>
+        <span class="dashboard-total-value">${fmt(totalVendas)}</span>
+      </div>
+
+      ${Object.keys(catRevenue).length ? `
+      <div class="dashboard-section">
+        <div class="dashboard-subtitle">Por categoria</div>
+        ${Object.entries(catRevenue).sort((a,b) => b[1]-a[1]).map(([cat, rev]) => {
+          const pct = Math.round((rev / maxRev) * 100);
+          return `
+            <div class="dash-bar-row">
+              <span class="dash-bar-label">${CAT_LABEL[cat] || cat}</span>
+              <div class="dash-bar-track">
+                <div class="dash-bar-fill dash-bar--${cat}" style="width:${pct}%"></div>
+              </div>
+              <span class="dash-bar-value">${fmt(rev)}</span>
+            </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${top5.length ? `
+      <div class="dashboard-section">
+        <div class="dashboard-subtitle">Top produtos</div>
+        ${top5.map((p, i) => `
+          <div class="top-product-row">
+            <span class="top-rank">#${i+1}</span>
+            <span class="top-name">${sanitize(p.name)}</span>
+            <span class="top-qty muted">${p.qty}×</span>
+            <span class="top-rev">${fmt(p.revenue)}</span>
+          </div>`).join('')}
+      </div>` : ''}
+    </div>`;
+}
+
 function renderSaleCard(sale) {
   const methodLabel = sale.payment_method === 'multiplo'
     ? (sale.splits || []).map(sp => `${labelMetodo(sp.method)} ${fmt(sp.amount)}`).join(' + ')
@@ -124,6 +198,7 @@ function renderSaleCard(sale) {
         <span class="sale-method">${methodLabel}</span>
         <span class="sale-total">${fmt(sale.total_amount)}</span>
         ${sale.is_voided ? '<span class="badge badge--danger">Estornado</span>' : ''}
+        ${sale.is_fiado  ? '<span class="badge badge--warning">Fiado</span>' : ''}
       </div>
       ${sale.employee_name ? `<div class="muted">Vale: ${sale.employee_name}</div>` : ''}
       ${sale.items ? `<div class="sale-items">${sale.items.map(i => `${i.product_name} ×${i.quantity}`).join(', ')}</div>` : ''}
@@ -150,7 +225,7 @@ function renderHistoricoAnterior(history) {
 }
 
 function labelMetodo(m) {
-  return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', credito:'Crédito', vale:'Vale' }[m] || m;
+  return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', vale:'Vale' }[m] || m;
 }
 
 function filterHistory(history, fromDate, toDate) {
@@ -164,8 +239,7 @@ function filterHistory(history, fromDate, toDate) {
 }
 
 function bindHistorico(sales, sangrias, session) {
-  document.getElementById('btn-exportar')?.addEventListener('click', () => exportarRelatorio(session, sales, sangrias));
-  document.getElementById('btn-imprimir')?.addEventListener('click', () => window.print());
+  document.getElementById('btn-exportar')?.addEventListener('click', () => printRelatorio(session, sales, sangrias));
 
   document.getElementById('hist-from')?.addEventListener('change', e => {
     setState('histFromDate', e.target.value);
@@ -183,7 +257,7 @@ function bindHistorico(sales, sangrias, session) {
 
   document.getElementById('btn-estornar')?.addEventListener('click', async () => {
     const valid = sales.filter(s => !s.is_voided);
-    const last = [...valid].reverse()[0];
+    const last  = [...valid].reverse()[0];
     if (!last) return showToast('Nenhuma venda para estornar', 'error');
     if (!confirm(`Estornar a venda de ${fmt(last.total_amount)}?`)) return;
     await voidSale(last.id);
@@ -192,60 +266,182 @@ function bindHistorico(sales, sangrias, session) {
   });
 }
 
-function exportarRelatorio(session, sales, sangrias) {
+// ── Gerador de PDF / Janela de impressão ──────────────────────
+function printRelatorio(session, sales, sangrias) {
   if (!session) return;
-  const validSales = sales.filter(s => !s.is_voided);
-  const totalVendas = validSales.reduce((s, v) => s + v.total_amount, 0);
+
+  const validSales    = sales.filter(s => !s.is_voided);
+  const normalSales   = validSales.filter(s => !s.employee_name)
+                          .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const vales         = validSales.filter(s => s.employee_name);
+  const totalVendas   = normalSales.reduce((s, v) => s + v.total_amount, 0);
+  const totalVales    = vales.reduce((s, v) => s + v.total_amount, 0);
   const totalSangrias = sangrias.reduce((s, sg) => s + sg.amount, 0);
+  const closedAt      = fmtTime(new Date().toISOString());
 
-  const byMethod = {};
-  for (const sale of validSales) {
-    if (sale.payment_method === 'multiplo') {
-      (sale.splits || []).forEach(sp => { byMethod[sp.method] = (byMethod[sp.method] || 0) + sp.amount; });
+  // ── Linhas das vendas normais ──────────────────────────────
+  const rows = [];
+  for (const sale of normalSales) {
+    const items    = sale.items || [];
+    const method   = labelMetodoPDF(sale);
+    const discount = sale.discount_amount ? `<td style="color:#cf222e">−${fmtBRL(sale.discount_amount)}</td>` : '';
+
+    if (!items.length) {
+      rows.push(`<tr class="sale-first">
+        <td>${fmtTime(sale.created_at)}</td>
+        <td>—</td>
+        <td>—</td>
+        <td>${fmtBRL(sale.total_amount)}</td>
+        <td>${method}</td>
+      </tr>`);
     } else {
-      byMethod[sale.payment_method] = (byMethod[sale.payment_method] || 0) + sale.total_amount;
+      items.forEach((item, i) => {
+        if (i === 0) {
+          rows.push(`<tr class="sale-first">
+            <td>${fmtTime(sale.created_at)}</td>
+            <td>${item.quantity}×</td>
+            <td>${escHtml(item.product_name)}</td>
+            <td>${fmtBRL(item.product_price * item.quantity)}</td>
+            <td>${method}</td>
+          </tr>`);
+        } else {
+          rows.push(`<tr class="sale-cont">
+            <td></td>
+            <td>${item.quantity}×</td>
+            <td>${escHtml(item.product_name)}</td>
+            <td>${fmtBRL(item.product_price * item.quantity)}</td>
+            <td></td>
+          </tr>`);
+        }
+      });
+      if (sale.discount_amount) {
+        rows.push(`<tr class="sale-cont">
+          <td></td>
+          <td colspan="2" style="color:#cf222e;font-style:italic">Desconto</td>
+          <td style="color:#cf222e">−${fmtBRL(sale.discount_amount)}</td>
+          <td></td>
+        </tr>`);
+      }
     }
   }
 
-  const itemQtd = {};
-  for (const sale of validSales) {
+  // ── Linhas dos vales ───────────────────────────────────────
+  const valeRows = [];
+  for (const sale of vales) {
     for (const item of (sale.items || [])) {
-      itemQtd[item.product_name] = (itemQtd[item.product_name] || 0) + item.quantity;
+      valeRows.push(`<tr>
+        <td>${item.quantity}×</td>
+        <td>${escHtml(item.product_name)}</td>
+        <td>${fmtBRL(item.product_price * item.quantity)}</td>
+        <td>${escHtml(sale.employee_name || '')}</td>
+      </tr>`);
     }
   }
 
-  const vales = validSales.filter(s => s.employee_name);
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Relatório TPC PDV — ${new Date().toLocaleDateString('pt-BR')}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', Courier, monospace; padding: 24px 20px;
+         max-width: 760px; margin: 0 auto; color: #111; font-size: 13px; }
+  h1  { text-align: center; font-size: 15px; border-bottom: 2px solid #000;
+        padding-bottom: 6px; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { text-align: center; font-size: 11px; color: #555; margin-bottom: 18px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th  { border-bottom: 1px solid #000; padding: 4px 6px; text-align: left; font-size: 12px; white-space: nowrap; }
+  td  { padding: 2px 6px; vertical-align: top; }
+  tr.sale-first td { padding-top: 5px; }
+  tr.sale-first:not(:first-child) td:first-child { border-top: 1px dashed #ccc; padding-top: 5px; }
+  .footer-line { font-size: 13px; font-weight: bold; margin-top: 10px;
+                 border-top: 2px solid #000; padding-top: 8px; }
+  h2  { font-size: 13px; margin-top: 24px; border-bottom: 1px solid #000;
+        padding-bottom: 4px; margin-bottom: 8px; letter-spacing: .5px; }
+  .total-vales { font-weight: bold; margin-top: 8px; font-size: 13px; }
+  .no-print { margin-top: 24px; }
+  @media print {
+    .no-print { display: none !important; }
+    body { padding: 10px; }
+  }
+</style>
+</head>
+<body>
 
-  const lines = [
-    '═══════════════════════════════════',
-    '      RELATÓRIO DE FECHAMENTO TPC  ',
-    '═══════════════════════════════════',
-    `Abertura: ${new Date(session.opened_at).toLocaleString('pt-BR')}`,
-    `Fechamento: ${new Date().toLocaleString('pt-BR')}`,
-    '',
-    '── BALANÇO FINANCEIRO ──',
-    `Fundo Inicial:      ${fmt(session.opening_amount)}`,
-    ...Object.entries(byMethod).map(([m,v]) => `${labelMetodo(m).padEnd(20)} ${fmt(v)}`),
-    `Sangrias:           − ${fmt(totalSangrias)}`,
-    `Total Faturado:     ${fmt(totalVendas)}`,
-    `Nº Vendas:          ${validSales.length}`,
-    '',
-    '── VALES EMITIDOS ──',
-    ...vales.map(v => `${v.employee_name}: ${(v.items||[]).map(i=>`${i.product_name}×${i.quantity}`).join(', ')}`),
-    '',
-    '── SANGRIAS ──',
-    ...sangrias.map(sg => `${fmt(sg.amount)} - ${sg.justification}`),
-    '',
-    '── PRODUTOS VENDIDOS ──',
-    ...Object.entries(itemQtd).sort((a,b)=>b[1]-a[1]).map(([name, qty]) => `${name.padEnd(28)} ×${qty}`),
-    '═══════════════════════════════════'
-  ];
+<h1>RELATÓRIO DE FECHAMENTO — TPC PDV</h1>
+<div class="subtitle">
+  Abertura: ${new Date(session.opened_at).toLocaleString('pt-BR')}
+  &nbsp;|&nbsp;
+  Fechamento: ${new Date().toLocaleString('pt-BR')}
+  &nbsp;|&nbsp;
+  Fundo inicial: ${fmtBRL(session.opening_amount)}
+</div>
 
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `relatorio_tpc_${new Date().toISOString().slice(0,10)}.txt`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  showToast('Relatório exportado!', 'success');
+<table>
+  <thead>
+    <tr>
+      <th style="width:55px">Horário</th>
+      <th style="width:36px">Qtd</th>
+      <th>Item</th>
+      <th style="width:80px;text-align:right">Preço</th>
+      <th style="width:110px">Pagamento</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows.join('\n') || '<tr><td colspan="5" style="padding:8px;color:#888">Nenhuma venda registrada</td></tr>'}
+  </tbody>
+</table>
+
+<div class="footer-line">
+  Caixa fechado às ${closedAt} com ${fmtBRL(session.opening_amount)}
+  &mdash; Sangrias: ${fmtBRL(totalSangrias)}
+  &mdash; Total: ${fmtBRL(totalVendas)}
+</div>
+
+${valeRows.length ? `
+<h2>VALES DE FUNCIONÁRIO</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width:36px">Qtd</th>
+      <th>Item</th>
+      <th style="width:80px;text-align:right">Preço</th>
+      <th>Funcionário</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${valeRows.join('\n')}
+  </tbody>
+</table>
+<div class="total-vales">Total em vales: ${fmtBRL(totalVales)}</div>
+` : ''}
+
+<div class="no-print">
+  <button onclick="window.print()"
+          style="padding:10px 22px;font-size:14px;cursor:pointer;
+                 background:#0550ae;color:#fff;border:none;border-radius:6px">
+    🖨️ Imprimir / Salvar PDF
+  </button>
+</div>
+
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Permita popups para gerar o PDF', 'error'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+// helpers para o PDF
+function fmtBRL(v) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+}
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function labelMetodoPDF(sale) {
+  if (sale.payment_method === 'multiplo') {
+    return (sale.splits || []).map(sp => `${sp.method.charAt(0).toUpperCase()+sp.method.slice(1)} ${fmtBRL(sp.amount)}`).join(' + ');
+  }
+  return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', vale:'Vale' }[sale.payment_method] || sale.payment_method;
 }

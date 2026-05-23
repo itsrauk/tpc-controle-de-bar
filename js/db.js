@@ -183,3 +183,24 @@ export function getPin()           { return ls.get(LS_KEYS.PIN, null); }
 export function setPin(pin)        { ls.set(LS_KEYS.PIN, pin); }
 export function clearPin()         { ls.del(LS_KEYS.PIN); }
 export function checkPin(input)    { return ls.get(LS_KEYS.PIN, null) === input; }
+
+// ── Fiados (meu pai vai pagar depois) ───────────────────────────
+export function getFiados() { return ls.get(LS_KEYS.FIADOS, []); }
+
+export async function saveFiado(fiado) {
+  const fiados = ls.get(LS_KEYS.FIADOS, []);
+  const idx = fiados.findIndex(f => f.id === fiado.id);
+  if (idx !== -1) fiados[idx] = fiado; else fiados.push(fiado);
+  ls.set(LS_KEYS.FIADOS, fiados);
+  return fiado;
+}
+
+export async function updateFiado(id, data) {
+  const fiados = ls.get(LS_KEYS.FIADOS, []);
+  const idx = fiados.findIndex(f => f.id === id);
+  if (idx !== -1) {
+    fiados[idx] = { ...fiados[idx], ...data, updated_at: new Date().toISOString() };
+  }
+  ls.set(LS_KEYS.FIADOS, fiados);
+  return fiados[idx];
+}

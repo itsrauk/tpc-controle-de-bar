@@ -22,7 +22,6 @@ export const METODOS_PAGAMENTO = [
   { id: 'dinheiro', label: 'Dinheiro' },
   { id: 'pix',      label: 'Pix'      },
   { id: 'debito',   label: 'Débito'   },
-  { id: 'credito',  label: 'Crédito'  },
   { id: 'multiplo', label: 'Múltiplo' }
 ];
 
@@ -35,7 +34,8 @@ export const LS_KEYS = {
   SYNC_QUEUE:   'tpc_sync_queue',
   HISTORY:      'tpc_history',
   CART:         'tpc_cart',
-  PIN:          'tpc_pin'
+  PIN:          'tpc_pin',
+  FIADOS:       'tpc_fiados'
 };
 
 export const LOW_STOCK_THRESHOLD = 5;

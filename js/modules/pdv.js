@@ -1,5 +1,5 @@
 import { getState, setState } from '../store.js';
-import { saveSale, saveReservation, updateProductStock, saveCartLocal, clearCartLocal } from '../db.js';
+import { saveSale, saveReservation, saveFiado, updateProductStock, saveCartLocal, clearCartLocal } from '../db.js';
 import { fmt, uuid, cartTotal, showToast, sanitize } from '../utils.js';
 import { CATEGORIAS, METODOS_PAGAMENTO } from '../config.js';
 
@@ -21,9 +21,13 @@ function feedbackAdd() {
 // ── Salva carrinho no localStorage ─────────────────────────────
 function persistCart() {
   saveCartLocal(getState('cart'), {
-    isVale:       getState('isVale'),
-    employeeName: getState('employeeName'),
-    isReserva:    getState('isReserva')
+    isVale:       getState('isVale')       || false,
+    employeeName: getState('employeeName') || '',
+    isReserva:    getState('isReserva')    || false,
+    isFiado:      getState('isFiado')      || false,
+    nomeAluno:    getState('nomeAluno')    || '',
+    nomePai:      getState('nomePai')      || '',
+    discount:     getState('discount')     || 0
   });
 }
 
@@ -91,10 +95,13 @@ function renderProducts() {
 }
 
 function renderCart() {
-  const cart = getState('cart');
-  const isVale = getState('isVale');
+  const cart      = getState('cart');
+  const isVale    = getState('isVale');
   const isReserva = getState('isReserva');
-  const total = cartTotal(cart);
+  const isFiado   = getState('isFiado')   || false;
+  const discount  = getState('discount')  || 0;
+  const subtotal  = cartTotal(cart);
+  const totalLiquido = isVale ? subtotal : Math.max(0, subtotal - discount);
 
   return `
     <div class="cart-header">
@@ -129,12 +136,22 @@ function renderCart() {
 
     ${cart.length ? `
     <div class="cart-footer">
+
+      ${!isVale && !isFiado ? `
       <div class="reserva-toggle">
         <label class="toggle-label">
           <input type="checkbox" id="chk-reserva" ${isReserva ? 'checked' : ''}>
           <span>📋 Marcar como Reserva</span>
         </label>
-      </div>
+      </div>` : ''}
+
+      ${!isVale && !isReserva ? `
+      <div class="reserva-toggle">
+        <label class="toggle-label">
+          <input type="checkbox" id="chk-fiado" ${isFiado ? 'checked' : ''}>
+          <span>👨‍👩‍👦 Fiado (Pai paga depois)</span>
+        </label>
+      </div>` : ''}
 
       ${isReserva ? `
       <div class="reserva-fields">
@@ -154,12 +171,48 @@ function renderCart() {
           </select>
         </div>
         <button class="btn btn--primary btn--full" id="btn-reservar">📋 Confirmar Reserva</button>
-      </div>` : `
-      <div class="cart-total">
-        <span>Total</span>
-        <span class="total-value">${fmt(total)}</span>
-      </div>
-      <button class="btn btn--primary btn--full" id="btn-pagar">💳 Finalizar Venda</button>`}
+      </div>` : ''}
+
+      ${isFiado ? `
+      <div class="fiado-fields">
+        <div class="fiado-banner">
+          <span>👨‍👩‍👦 FIADO — PAI PAGA DEPOIS</span>
+        </div>
+        <div class="form-group">
+          <label>Nome do Aluno *</label>
+          <input type="text" id="inp-aluno" placeholder="Nome do aluno"
+                 value="${sanitize(getState('nomeAluno') || '')}">
+        </div>
+        <div class="form-group">
+          <label>Nome do Pai / Responsável *</label>
+          <input type="text" id="inp-pai" placeholder="Nome do responsável"
+                 value="${sanitize(getState('nomePai') || '')}">
+        </div>
+        <div class="cart-total">
+          <span>Total Fiado</span>
+          <span class="total-value">${fmt(subtotal)}</span>
+        </div>
+        <button class="btn btn--warning btn--full" id="btn-fiado">👨‍👩‍👦 Confirmar Fiado</button>
+      </div>` : ''}
+
+      ${!isReserva && !isFiado ? `
+        ${!isVale ? `
+        <div class="discount-row">
+          <div class="discount-header">
+            <span class="discount-label">Desconto (R$)</span>
+            ${discount > 0 ? `<span class="discount-display">−${fmt(discount)}</span>` : ''}
+          </div>
+          <input type="number" id="inp-discount" min="0" max="${subtotal.toFixed(2)}" step="0.01"
+                 placeholder="0,00" class="discount-input"
+                 value="${discount > 0 ? discount.toFixed(2) : ''}">
+        </div>` : ''}
+        <div class="cart-total">
+          <span>Total</span>
+          <span class="total-value">${fmt(totalLiquido)}</span>
+        </div>
+        <button class="btn btn--primary btn--full" id="btn-pagar">💳 Finalizar Venda</button>
+      ` : ''}
+
     </div>` : ''}`;
 }
 
@@ -241,6 +294,10 @@ function bindPDV() {
     setState('isVale', false);
     setState('employeeName', '');
     setState('isReserva', false);
+    setState('isFiado', false);
+    setState('nomeAluno', '');
+    setState('nomePai', '');
+    setState('discount', 0);
     clearCartLocal();
     refreshCart();
   });
@@ -254,21 +311,61 @@ function bindPDV() {
   // Toggle reserva
   document.getElementById('chk-reserva')?.addEventListener('change', e => {
     setState('isReserva', e.target.checked);
+    if (e.target.checked) setState('isFiado', false);
     persistCart();
     refreshCart();
   });
 
+  // Toggle fiado
+  document.getElementById('chk-fiado')?.addEventListener('change', e => {
+    setState('isFiado', e.target.checked);
+    if (e.target.checked) setState('isReserva', false);
+    persistCart();
+    refreshCart();
+  });
+
+  // Campo nome aluno
+  document.getElementById('inp-aluno')?.addEventListener('input', e => {
+    setState('nomeAluno', e.target.value);
+    persistCart();
+  });
+
+  // Campo nome pai
+  document.getElementById('inp-pai')?.addEventListener('input', e => {
+    setState('nomePai', e.target.value);
+    persistCart();
+  });
+
+  // Campo desconto
+  document.getElementById('inp-discount')?.addEventListener('input', e => {
+    const sub = cartTotal(getState('cart'));
+    const val = Math.min(parseFloat(e.target.value) || 0, sub);
+    setState('discount', val);
+    persistCart();
+    // Atualiza total na tela sem re-render completo
+    const tv = document.querySelector('.total-value');
+    if (tv) tv.textContent = fmt(Math.max(0, sub - val));
+    const dd = document.querySelector('.discount-display');
+    if (val > 0) {
+      if (dd) { dd.textContent = `−${fmt(val)}`; }
+      else {
+        const dh = document.querySelector('.discount-header');
+        if (dh) dh.insertAdjacentHTML('beforeend', `<span class="discount-display">−${fmt(val)}</span>`);
+      }
+    } else if (dd) dd.remove();
+  });
+
   // Finalizar reserva
   document.getElementById('btn-reservar')?.addEventListener('click', async () => await confirmarReserva());
+
+  // Finalizar fiado
+  document.getElementById('btn-fiado')?.addEventListener('click', async () => await confirmarFiado());
 
   // Finalizar venda
   document.getElementById('btn-pagar')?.addEventListener('click', () => openModalPagamento());
 }
 
 function refreshCart() {
-  const cartEl = document.getElementById('pdv-cart');
-  if (cartEl) { cartEl.outerHTML = ''; }
-  // Re-render completo para manter estado correto
   renderPDV();
 }
 
@@ -277,9 +374,11 @@ function openModalPagamento() {
   const session = getState('session');
   if (!session) return showToast('Abra o caixa primeiro!', 'error');
 
-  const cart = getState('cart');
-  const isVale = getState('isVale');
-  const total = cartTotal(cart);
+  const cart     = getState('cart');
+  const isVale   = getState('isVale');
+  const subtotal = cartTotal(cart);
+  const discount = isVale ? 0 : (getState('discount') || 0);
+  const total    = Math.max(0, subtotal - discount);
 
   if (isVale && !getState('employeeName')?.trim()) {
     return showToast('Informe o nome do funcionário/professor', 'error');
@@ -287,6 +386,10 @@ function openModalPagamento() {
 
   showModal(`
     <h2>Finalizar Venda</h2>
+    ${discount > 0 ? `
+    <div style="text-align:center;font-size:.9rem;color:var(--text-muted);margin-bottom:.25rem">
+      Subtotal ${fmt(subtotal)} &minus; Desconto ${fmt(discount)}
+    </div>` : ''}
     <div class="payment-total">Total: <strong>${fmt(total)}</strong></div>
 
     <div class="payment-methods">
@@ -317,7 +420,7 @@ function openModalPagamento() {
     });
   });
 
-  document.getElementById('btn-confirmar-venda')?.addEventListener('click', async () => await confirmarVenda());
+  document.getElementById('btn-confirmar-venda')?.addEventListener('click', async () => await confirmarVenda(total));
 }
 
 function renderPayDetails(method, total) {
@@ -352,7 +455,7 @@ function renderMultiploPay(total) {
       </div>
       <div class="multiplo-add">
         <select id="multiplo-method">
-          ${METODOS_PAGAMENTO.filter(m => m.id !== 'multiplo' && m.id !== 'vale').map(m =>
+          ${METODOS_PAGAMENTO.filter(m => m.id !== 'multiplo').map(m =>
             `<option value="${m.id}">${m.label}</option>`).join('')}
         </select>
         <input type="number" id="multiplo-valor" step="0.01" placeholder="Valor" class="input-money">
@@ -401,15 +504,17 @@ function renderSplits(splits) {
 }
 
 function labelMetodo(m) {
-  return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', credito:'Crédito', vale:'Vale' }[m] || m;
+  return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', vale:'Vale' }[m] || m;
 }
 
-async function confirmarVenda() {
-  const session = getState('session');
-  const cart = getState('cart');
-  const total = cartTotal(cart);
-  const method = getState('activeMethod');
-  const isVale = getState('isVale');
+async function confirmarVenda(totalFinal) {
+  const session      = getState('session');
+  const cart         = getState('cart');
+  const subtotal     = cartTotal(cart);
+  const discount     = getState('discount') || 0;
+  const total        = totalFinal ?? Math.max(0, subtotal - discount);
+  const method       = getState('activeMethod');
+  const isVale       = getState('isVale');
   const employeeName = getState('employeeName');
 
   if (!method) return showToast('Selecione o método de pagamento', 'error');
@@ -442,6 +547,7 @@ async function confirmarVenda() {
     session_id: session.id,
     payment_method: method,
     total_amount: total,
+    discount_amount: discount > 0 ? discount : null,
     cash_received: cashReceived,
     change_given: changeGiven,
     employee_name: isVale ? employeeName : null,
@@ -470,6 +576,10 @@ async function confirmarVenda() {
   setState('isVale', false);
   setState('employeeName', '');
   setState('isReserva', false);
+  setState('isFiado', false);
+  setState('nomeAluno', '');
+  setState('nomePai', '');
+  setState('discount', 0);
   setState('activeMethod', null);
   setState('multipleSplits', null);
   clearCartLocal();
@@ -483,11 +593,11 @@ async function confirmarVenda() {
 }
 
 async function confirmarReserva() {
-  const session = getState('session');
-  const cart = getState('cart');
-  const total = cartTotal(cart);
-  const cliente = document.getElementById('inp-cliente')?.value?.trim();
-  const horario = document.getElementById('inp-retirada')?.value?.trim();
+  const session  = getState('session');
+  const cart     = getState('cart');
+  const total    = cartTotal(cart);
+  const cliente  = document.getElementById('inp-cliente')?.value?.trim();
+  const horario  = document.getElementById('inp-retirada')?.value?.trim();
   const payTiming = document.getElementById('sel-pay-timing')?.value;
 
   if (!cliente) return showToast('Informe o nome do cliente', 'error');
@@ -506,7 +616,6 @@ async function confirmarReserva() {
     updated_at: new Date().toISOString()
   };
 
-  // Se pagar na reserva, processar venda também
   if (payTiming === 'reserva') {
     const saleId = uuid();
     const items = cart.map(item => ({
@@ -518,7 +627,7 @@ async function confirmarReserva() {
     }));
     const sale = {
       id: saleId, session_id: session?.id,
-      payment_method: 'pix', // default — pode mudar
+      payment_method: 'pix',
       total_amount: total,
       is_reservation: true,
       is_voided: false,
@@ -529,7 +638,6 @@ async function confirmarReserva() {
     reservation.sale_id = saleId;
   }
 
-  // Decrementa estoque
   for (const item of cart) {
     if (item.product.category !== 'vale' && item.product.stock > 0) {
       const newStock = Math.max(0, item.product.stock - item.qty);
@@ -549,5 +657,61 @@ async function confirmarReserva() {
   clearCartLocal();
 
   showToast(`Reserva para ${cliente} criada!`, 'success');
+  renderPDV();
+}
+
+async function confirmarFiado() {
+  const session   = getState('session');
+  if (!session) return showToast('Abra o caixa primeiro!', 'error');
+
+  const cart      = getState('cart');
+  const subtotal  = cartTotal(cart);
+  const aluno     = document.getElementById('inp-aluno')?.value?.trim()
+                    || getState('nomeAluno')?.trim();
+  const pai       = document.getElementById('inp-pai')?.value?.trim()
+                    || getState('nomePai')?.trim();
+
+  if (!aluno) return showToast('Informe o nome do aluno', 'error');
+  if (!pai)   return showToast('Informe o nome do pai / responsável', 'error');
+
+  const fiado = {
+    id:           uuid(),
+    session_id:   session.id,
+    nome_aluno:   aluno,
+    nome_pai:     pai,
+    items:        cart.map(i => ({
+      id:          uuid(),
+      product_id:  i.product.id,
+      name:        i.product.name,
+      qty:         i.qty,
+      price:       i.product.price
+    })),
+    total_amount: subtotal,
+    status:       'pending',
+    created_at:   new Date().toISOString(),
+    updated_at:   new Date().toISOString()
+  };
+
+  // Decrementa estoque
+  for (const item of cart) {
+    if (item.product.category !== 'vale' && item.product.stock > 0) {
+      const newStock = Math.max(0, item.product.stock - item.qty);
+      await updateProductStock(item.product.id, newStock);
+      const products = getState('products').map(p =>
+        p.id === item.product.id ? { ...p, stock: newStock } : p);
+      setState('products', products);
+    }
+  }
+
+  await saveFiado(fiado);
+
+  // Limpar estado
+  setState('cart', []);
+  setState('isFiado', false);
+  setState('nomeAluno', '');
+  setState('nomePai', '');
+  clearCartLocal();
+
+  showToast(`Fiado de ${aluno} registrado!`, 'success');
   renderPDV();
 }

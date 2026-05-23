@@ -1,4 +1,4 @@
-const CACHE = 'tpc-pdv-v2';
+const CACHE = 'tpc-pdv-v3';
 const ASSETS = [
   './',
   './index.html',

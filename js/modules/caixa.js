@@ -214,6 +214,10 @@ function openModalFechamento() {
     setState('isVale', false);
     setState('employeeName', '');
     setState('isReserva', false);
+    setState('isFiado', false);
+    setState('nomeAluno', '');
+    setState('nomePai', '');
+    setState('discount', 0);
     clearCartLocal();
 
     closeModal();

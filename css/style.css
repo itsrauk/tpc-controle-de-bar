@@ -591,6 +591,83 @@ mark {
   .badge { border: 1px solid #ccc; color: #000 !important; background: #eee !important; }
 }
 
+/* ── Fiado ───────────────────────────────────────────────────── */
+.fiado-banner {
+  background: rgba(210,153,34,.12); border: 1px solid var(--yellow);
+  color: var(--yellow); border-radius: var(--radius-sm);
+  padding: .55rem 1rem; font-weight: 700; font-size: .85rem;
+  text-align: center; margin-bottom: .25rem;
+}
+.fiado-fields { display: flex; flex-direction: column; gap: .5rem; padding: .25rem 0; }
+
+.fiado-card {
+  background: var(--surface); border: 1px solid rgba(210,153,34,.45);
+  border-radius: var(--radius); padding: 1rem;
+  display: flex; flex-direction: column; gap: .6rem;
+}
+.fiado-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+.fiado-aluno  { font-size: .95rem; font-weight: 700; }
+.fiado-pai    { font-size: .83rem; margin-top: .15rem; }
+.fiado-meta   { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; }
+.fiado-total  { font-size: .95rem; font-weight: 700; color: var(--yellow); }
+.fiado-items  { display: flex; flex-wrap: wrap; gap: .3rem; }
+.fiado-actions { display: flex; gap: .5rem; }
+.fiado-actions .btn { flex: 1; }
+
+/* ── Fiados / Reservas section titles ───────────────────────── */
+.fiados-section    { display: flex; flex-direction: column; gap: .5rem; }
+.reservas-section  { display: flex; flex-direction: column; gap: .5rem; }
+.fiados-section-title, .reservas-section-title {
+  font-size: .78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; padding: .5rem 0 .3rem;
+  border-bottom: 1px solid var(--border);
+}
+.fiados-section-title  { color: var(--yellow); border-color: rgba(210,153,34,.35); }
+.reservas-section-title { color: var(--blue);  border-color: var(--border); }
+
+/* ── Discount row (cart) ─────────────────────────────────────── */
+.discount-row { display: flex; flex-direction: column; gap: .25rem; }
+.discount-header { display: flex; justify-content: space-between; align-items: center; }
+.discount-label  { font-size: .8rem; color: var(--text-muted); }
+.discount-display { font-size: .82rem; color: var(--red); font-weight: 700; }
+.discount-input  {
+  font-size: .95rem !important; padding: .45rem .7rem !important;
+  background: var(--surface2); border-color: rgba(248,81,73,.35) !important;
+}
+.discount-input:focus { border-color: var(--red) !important; }
+
+/* ── Dashboard ───────────────────────────────────────────────── */
+.dashboard-card h3    { margin-bottom: .25rem; }
+.dashboard-total      { display: flex; justify-content: space-between; align-items: center;
+                        padding: .5rem 0; border-bottom: 1px solid var(--border); margin-bottom: .5rem; }
+.dashboard-total-label { font-size: .82rem; color: var(--text-muted); }
+.dashboard-total-value { font-size: 1.55rem; font-weight: 800; color: var(--green); }
+.dashboard-section    { margin-top: .65rem; }
+.dashboard-subtitle   { font-size: .7rem; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: .8px; color: var(--text-muted); margin-bottom: .45rem; }
+
+.dash-bar-row   { display: grid; grid-template-columns: 58px 1fr 72px;
+                  gap: .45rem; align-items: center; margin-bottom: .35rem; }
+.dash-bar-label { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+.dash-bar-track { background: var(--surface2); border-radius: 99px; height: 7px; overflow: hidden; }
+.dash-bar-fill  { height: 100%; border-radius: 99px; background: var(--blue);
+                  transition: width .5s cubic-bezier(.4,0,.2,1); }
+.dash-bar--comida { background: #e3a206; }
+.dash-bar--doce   { background: #f472b6; }
+.dash-bar--bebida { background: #2dd4bf; }
+.dash-bar--tpc    { background: #a78bfa; }
+.dash-bar--vale   { background: #f85149; }
+.dash-bar-value { font-size: .75rem; font-weight: 700; text-align: right; }
+
+.top-product-row { display: grid; grid-template-columns: 22px 1fr 30px 72px;
+                   gap: .35rem; align-items: center;
+                   padding: .3rem 0; border-bottom: 1px solid var(--border); }
+.top-product-row:last-child { border-bottom: none; }
+.top-rank { font-size: .75rem; font-weight: 800; color: var(--text-muted); text-align: center; }
+.top-name { font-size: .8rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-qty  { font-size: .75rem; color: var(--text-muted); text-align: right; }
+.top-rev  { font-size: .8rem; font-weight: 700; text-align: right; color: var(--green); }
+
 /* ── Desktop ─────────────────────────────────────────────────── */
 @media (min-width: 600px) {
   #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
