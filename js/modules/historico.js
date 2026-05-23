@@ -1,4 +1,4 @@
-import { getState } from '../store.js';
+import { getState, setState } from '../store.js';
 import { getSales, getSangrias, voidSale } from '../db.js';
 import { fmt, fmtDate, fmtTime, calcExpectedCash, showToast } from '../utils.js';
 import { LS_KEYS } from '../config.js';
@@ -7,19 +7,39 @@ export function renderHistorico() {
   const el = document.getElementById('panel-historico');
   if (!el) return;
 
-  const session = getState('session');
-  const sales = getSales();
+  const session  = getState('session');
+  const sales    = getSales();
   const sangrias = getSangrias();
-  const history = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
+  const history  = JSON.parse(localStorage.getItem(LS_KEYS.HISTORY) || '[]');
+  const fromDate = getState('histFromDate') || '';
+  const toDate   = getState('histToDate')   || '';
+  const filteredHistory = filterHistory(history, fromDate, toDate);
 
   el.innerHTML = `
     <div class="panel-header">
       <h2>Histórico do Turno</h2>
-      ${session ? `<button class="btn btn--primary btn--sm" id="btn-exportar">📄 Exportar</button>` : ''}
+      <div style="display:flex;gap:.4rem">
+        ${session ? `<button class="btn btn--ghost btn--sm" id="btn-imprimir" title="Imprimir">🖨️</button>` : ''}
+        ${session ? `<button class="btn btn--primary btn--sm" id="btn-exportar">📄 Exportar</button>` : ''}
+      </div>
     </div>
 
     ${session ? renderTurnoAtual(session, sales, sangrias) : '<div class="empty-state muted">Nenhum turno aberto</div>'}
-    ${history.length ? renderHistoricoAnterior(history) : ''}`;
+
+    ${history.length ? `
+    <div class="date-filter-bar">
+      <span class="muted" style="white-space:nowrap;font-size:.78rem">Turnos anteriores:</span>
+      <input type="date" id="hist-from" value="${fromDate}" title="De">
+      <span class="muted">—</span>
+      <input type="date" id="hist-to" value="${toDate}" title="Até">
+      ${fromDate || toDate ? `<button class="btn btn--ghost btn--sm" id="btn-clear-filter" title="Limpar">✕</button>` : ''}
+    </div>` : ''}
+
+    ${filteredHistory.length
+      ? renderHistoricoAnterior(filteredHistory)
+      : history.length
+        ? '<div class="empty-state muted" style="padding:1.5rem 1rem">Nenhum turno no período selecionado</div>'
+        : ''}`;
 
   bindHistorico(sales, sangrias, session);
 }
@@ -133,8 +153,33 @@ function labelMetodo(m) {
   return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', credito:'Crédito', vale:'Vale' }[m] || m;
 }
 
+function filterHistory(history, fromDate, toDate) {
+  if (!fromDate && !toDate) return history;
+  return history.filter(entry => {
+    const date = (entry.session?.opened_at || '').slice(0, 10);
+    if (fromDate && date < fromDate) return false;
+    if (toDate   && date > toDate)   return false;
+    return true;
+  });
+}
+
 function bindHistorico(sales, sangrias, session) {
   document.getElementById('btn-exportar')?.addEventListener('click', () => exportarRelatorio(session, sales, sangrias));
+  document.getElementById('btn-imprimir')?.addEventListener('click', () => window.print());
+
+  document.getElementById('hist-from')?.addEventListener('change', e => {
+    setState('histFromDate', e.target.value);
+    renderHistorico();
+  });
+  document.getElementById('hist-to')?.addEventListener('change', e => {
+    setState('histToDate', e.target.value);
+    renderHistorico();
+  });
+  document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
+    setState('histFromDate', '');
+    setState('histToDate', '');
+    renderHistorico();
+  });
 
   document.getElementById('btn-estornar')?.addEventListener('click', async () => {
     const valid = sales.filter(s => !s.is_voided);

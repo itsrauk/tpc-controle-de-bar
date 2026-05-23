@@ -1,7 +1,38 @@
 import { getState, setState } from '../store.js';
-import { saveSale, saveReservation, updateProductStock } from '../db.js';
+import { saveSale, saveReservation, updateProductStock, saveCartLocal, clearCartLocal } from '../db.js';
 import { fmt, uuid, cartTotal, showToast, sanitize } from '../utils.js';
 import { CATEGORIAS, METODOS_PAGAMENTO } from '../config.js';
+
+// ── Feedback sensorial ──────────────────────────────────────────
+function feedbackAdd() {
+  if (navigator.vibrate) navigator.vibrate(40);
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    osc.start(); osc.stop(ctx.currentTime + 0.06);
+  } catch { /* AudioContext não disponível */ }
+}
+
+// ── Salva carrinho no localStorage ─────────────────────────────
+function persistCart() {
+  saveCartLocal(getState('cart'), {
+    isVale:       getState('isVale'),
+    employeeName: getState('employeeName'),
+    isReserva:    getState('isReserva')
+  });
+}
+
+// ── Highlight de texto na busca ────────────────────────────────
+function highlight(text, search) {
+  if (!search) return sanitize(text);
+  const re = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return sanitize(text).replace(re, '<mark>$1</mark>');
+}
 
 export function renderPDV() {
   const el = document.getElementById('panel-pdv');
@@ -35,23 +66,23 @@ export function renderPDV() {
 
 function renderProducts() {
   const products = getState('products');
-  const cat = getState('filterCat');
-  const search = (getState('filterSearch') || '').toLowerCase();
+  const cat      = getState('filterCat');
+  const search   = (getState('filterSearch') || '').toLowerCase();
 
   const filtered = products.filter(p => {
-    const matchCat = cat === 'all' || p.category === cat;
+    const matchCat    = cat === 'all' || p.category === cat;
     const matchSearch = !search || p.name.toLowerCase().includes(search);
     return matchCat && matchSearch && p.active;
   });
 
-  if (!filtered.length) return '<div class="empty-state">Nenhum produto encontrado</div>';
+  if (!filtered.length) return `<div class="empty-state">${search ? `Sem resultados para "<strong>${sanitize(search)}</strong>"` : 'Nenhum produto encontrado'}</div>`;
 
   return filtered.map(p => {
     const esgotado = p.stock <= 0 && p.category !== 'vale';
     return `
       <button class="product-card${esgotado ? ' product-card--esgotado' : ''}"
               data-id="${p.id}" ${esgotado ? 'disabled' : ''}>
-        <span class="product-name">${sanitize(p.name)}</span>
+        <span class="product-name">${highlight(p.name, search)}</span>
         <span class="product-price">${p.price === 0 ? 'Grátis' : fmt(p.price)}</span>
         ${esgotado ? '<span class="esgotado-badge">Esgotado</span>' : ''}
         ${p.stock < 5 && p.stock > 0 && p.category !== 'vale' ? `<span class="low-stock">Últ. ${p.stock}</span>` : ''}
@@ -172,6 +203,8 @@ function bindPDV() {
     }
 
     setState('cart', cart);
+    feedbackAdd();
+    persistCart();
     refreshCart();
   });
 
@@ -198,6 +231,7 @@ function bindPDV() {
     }
 
     setState('cart', cart);
+    persistCart();
     refreshCart();
   });
 
@@ -207,15 +241,20 @@ function bindPDV() {
     setState('isVale', false);
     setState('employeeName', '');
     setState('isReserva', false);
+    clearCartLocal();
     refreshCart();
   });
 
   // Nome funcionário
-  document.getElementById('inp-employee')?.addEventListener('input', e => setState('employeeName', e.target.value));
+  document.getElementById('inp-employee')?.addEventListener('input', e => {
+    setState('employeeName', e.target.value);
+    persistCart();
+  });
 
   // Toggle reserva
   document.getElementById('chk-reserva')?.addEventListener('change', e => {
     setState('isReserva', e.target.checked);
+    persistCart();
     refreshCart();
   });
 
@@ -433,6 +472,7 @@ async function confirmarVenda() {
   setState('isReserva', false);
   setState('activeMethod', null);
   setState('multipleSplits', null);
+  clearCartLocal();
 
   const sales = [...(getState('sales') || []), sale];
   setState('sales', sales);
@@ -506,6 +546,7 @@ async function confirmarReserva() {
 
   setState('cart', []);
   setState('isReserva', false);
+  clearCartLocal();
 
   showToast(`Reserva para ${cliente} criada!`, 'success');
   renderPDV();

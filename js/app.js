@@ -1,7 +1,9 @@
 import { getState, setState, subscribe } from './store.js';
-import { loadProducts, loadReservations, getSession, getSales, getSangrias, flushQueue, openSession } from './db.js';
-import { fmt, isLateOpening, showToast, uuid } from './utils.js';
+import { loadProducts, loadReservations, getSession, getSales, getSangrias,
+         flushQueue, openSession, loadCartLocal, clearCartLocal } from './db.js';
+import { isLateOpening, showToast } from './utils.js';
 import { FUNDO_MINIMO } from './config.js';
+import { requirePin } from './modules/pin.js';
 import { renderCaixa } from './modules/caixa.js';
 import { renderPDV } from './modules/pdv.js';
 import { renderReservas } from './modules/reservas.js';
@@ -34,11 +36,20 @@ async function init() {
   }
   showLoading(false);
 
+  // Restaura sessão e carrinho do localStorage
   const session = getSession();
   if (session) {
     setState('session', session);
     setState('sales', getSales());
     setState('sangrias', getSangrias());
+    // Restaura carrinho salvo
+    const { cart, meta } = loadCartLocal();
+    if (cart?.length) {
+      setState('cart', cart);
+      setState('isVale', meta.isVale || false);
+      setState('employeeName', meta.employeeName || '');
+      setState('isReserva', meta.isReserva || false);
+    }
   }
 
   setupNav();
@@ -59,7 +70,7 @@ function setupNav() {
   });
 }
 
-// Formulário de abertura de caixa embutido no blocker
+// Formulário de abertura de caixa com validação de PIN
 function bindBlockerForm() {
   const inp = document.getElementById('blocker-abertura');
   inp?.addEventListener('input', () => {
@@ -69,13 +80,20 @@ function bindBlockerForm() {
   });
 
   document.getElementById('blocker-btn-abrir')?.addEventListener('click', async () => {
-    const val  = parseFloat(document.getElementById('blocker-abertura')?.value) || 0;
+    const val    = parseFloat(document.getElementById('blocker-abertura')?.value) || 0;
     const jBaixo = document.getElementById('blocker-just-baixo')?.value?.trim() || '';
     const jTarde = document.getElementById('blocker-just-tarde')?.value?.trim() || '';
 
     if (val <= 0) return showToast('Informe o valor inicial', 'error');
     if (val < FUNDO_MINIMO && jBaixo.length < 5) return showToast('Justifique o valor abaixo do mínimo', 'error');
     if (isLateOpening() && jTarde.length < 5) return showToast('Justifique a abertura fora do horário', 'error');
+
+    // Verificação de PIN (só pede se houver PIN configurado)
+    try {
+      await requirePin('Confirme o PIN para abrir o caixa');
+    } catch {
+      return; // Cancelado pelo operador
+    }
 
     const sess = await openSession({
       opening_amount: val,
@@ -85,6 +103,7 @@ function bindBlockerForm() {
     setState('session', sess);
     setState('sales', []);
     setState('sangrias', []);
+    clearCartLocal();
     showToast('Caixa aberto!', 'success');
     navigateTo('pdv');
   });

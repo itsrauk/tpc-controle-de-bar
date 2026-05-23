@@ -1,4 +1,5 @@
 import { getState, setState } from '../store.js';
+import { openPinSetup } from './pin.js';
 import { saveProduct } from '../db.js';
 import { fmt, uuid, showToast, sanitize } from '../utils.js';
 import { CATEGORIAS } from '../config.js';
@@ -22,7 +23,10 @@ export function renderEstoque() {
   el.innerHTML = `
     <div class="panel-header">
       <h2>Produtos</h2>
-      <button class="btn btn--primary btn--sm" id="btn-add-produto">+ Novo</button>
+      <div style="display:flex;gap:.4rem">
+        <button class="btn btn--ghost btn--sm" id="btn-pin-setup" title="Configurar PIN do operador">🔐 PIN</button>
+        <button class="btn btn--primary btn--sm" id="btn-add-produto">+ Novo</button>
+      </div>
     </div>
 
     <div class="search-bar" style="padding:.25rem 0 .5rem">
@@ -139,6 +143,9 @@ function bindEstoque() {
     const inp = e.target.closest('.preco-inline');
     if (inp) { inp.blur(); }
   });
+
+  // PIN settings
+  document.getElementById('btn-pin-setup')?.addEventListener('click', () => openPinSetup());
 
   // Botão novo produto
   document.getElementById('btn-add-produto')?.addEventListener('click', () => openAddModal());

@@ -1,7 +1,7 @@
 import { getState, setState } from '../store.js';
-import { closeSession, saveSangria, getSangrias, getSales } from '../db.js';
+import { closeSession, saveSangria, getSangrias, getSales, clearCartLocal } from '../db.js';
 import { fmt, fmtDate, calcExpectedCash, uuid, showToast } from '../utils.js';
-import { FUNDO_MINIMO } from '../config.js';
+import { FUNDO_MINIMO, LOW_STOCK_THRESHOLD } from '../config.js';
 
 export function renderCaixa() {
   const session = getState('session');
@@ -69,11 +69,30 @@ function renderAberto(session) {
             <span class="red">${fmt(sg.amount)}</span>
           </div>`).join('')}
       </div>` : ''}
+
+      ${renderLowStock()}
     </div>`;
 }
 
 function labelMetodo(m) {
   return { dinheiro:'Dinheiro', pix:'Pix', debito:'Débito', credito:'Crédito', vale:'Vale' }[m] || m;
+}
+
+function renderLowStock() {
+  const products = getState('products') || [];
+  const lowItems = products.filter(p => p.active && p.category !== 'vale' && p.stock <= LOW_STOCK_THRESHOLD);
+  if (!lowItems.length) return '';
+  return `
+    <div class="card">
+      <h3>⚠️ Estoque Baixo</h3>
+      ${lowItems.map(p => `
+        <div class="low-stock-item">
+          <span class="low-stock-name">${p.name}</span>
+          <span class="low-stock-qty ${p.stock === 0 ? 'stock--zero' : 'stock--low'}">
+            ${p.stock === 0 ? 'Esgotado' : `${p.stock} restante${p.stock > 1 ? 's' : ''}`}
+          </span>
+        </div>`).join('')}
+    </div>`;
 }
 
 function bindCaixa() {
@@ -191,6 +210,11 @@ function openModalFechamento() {
     setState('session', null);
     setState('sales', []);
     setState('sangrias', []);
+    setState('cart', []);
+    setState('isVale', false);
+    setState('employeeName', '');
+    setState('isReserva', false);
+    clearCartLocal();
 
     closeModal();
     showToast('Caixa fechado com sucesso!', 'success');

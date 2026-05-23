@@ -166,3 +166,20 @@ export async function loadReservations() {
     return ls.get(LS_KEYS.RESERVATIONS, []);
   }
 }
+
+// ── Cart persistence ────────────────────────────────────────────
+export function saveCartLocal(cart, meta = {}) {
+  ls.set(LS_KEYS.CART, { cart, meta });
+}
+export function loadCartLocal() {
+  return ls.get(LS_KEYS.CART, { cart: [], meta: {} });
+}
+export function clearCartLocal() {
+  ls.del(LS_KEYS.CART);
+}
+
+// ── PIN ─────────────────────────────────────────────────────────
+export function getPin()           { return ls.get(LS_KEYS.PIN, null); }
+export function setPin(pin)        { ls.set(LS_KEYS.PIN, pin); }
+export function clearPin()         { ls.del(LS_KEYS.PIN); }
+export function checkPin(input)    { return ls.get(LS_KEYS.PIN, null) === input; }

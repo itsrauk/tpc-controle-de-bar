@@ -33,5 +33,9 @@ export const LS_KEYS = {
   PRODUCTS:     'tpc_products',
   RESERVATIONS: 'tpc_reservations',
   SYNC_QUEUE:   'tpc_sync_queue',
-  HISTORY:      'tpc_history'
+  HISTORY:      'tpc_history',
+  CART:         'tpc_cart',
+  PIN:          'tpc_pin'
 };
+
+export const LOW_STOCK_THRESHOLD = 5;
